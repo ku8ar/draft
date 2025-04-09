@@ -1,5 +1,5 @@
-import { AppRegistry, Text } from 'react-native';
-import React from 'react';
+const React = require('react');
+const { AppRegistry, Text } = require('react-native');
 
 // 1. Federation manifest
 global.__REMOTE_FEDERATION_MANIFEST__ = {
@@ -42,7 +42,7 @@ global.__federation_exposes__ = {
 global.__webpack_require__ = global.__webpack_require__ || function () {};
 global.__federation_shared__ = global.__federation_shared__ || {};
 
-// 6. Optional for native test rendering
+// 6. Optional for test rendering
 AppRegistry.registerComponent('RemoteApp', () => App);
 
 console.log('✅ container.bundle loaded');
