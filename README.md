@@ -19,19 +19,30 @@ global.createURLResolver = function () {
   };
 };
 
-// 3. Minimal React Native component
-const App = () => <Text style={{ fontSize: 24, marginTop: 100, textAlign: 'center' }}>test</Text>;
+// 3. Minimal RN component bez JSX
+const App = () =>
+  React.createElement(
+    Text,
+    {
+      style: {
+        fontSize: 24,
+        marginTop: 100,
+        textAlign: 'center',
+      },
+    },
+    'test'
+  );
 
-// 4. Expose it for federation
+// 4. Federation expose
 global.__federation_exposes__ = {
   './App': App,
 };
 
-// 5. Optional mocks for full MF runtime
+// 5. Repack runtime mocks
 global.__webpack_require__ = global.__webpack_require__ || function () {};
 global.__federation_shared__ = global.__federation_shared__ || {};
 
-// 6. Register to allow local launch
+// 6. Optional for native test rendering
 AppRegistry.registerComponent('RemoteApp', () => App);
 
-console.log('✅ container.bundle loaded and App exposed');
+console.log('✅ container.bundle loaded');
