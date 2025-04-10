@@ -1,19 +1,25 @@
-#import <React/RCTAppSetupUtils.h>
-#import <React/RCTAppDependencyProvider.h>
-#import "BridgeWrapperBridgeDelegate.h"
+#import <React/RCTSurfacePresenterBridgeAdapter.h>
+#import <React/RCTSurfacePresenter.h>
+#import <React/RCTRuntimeExecutorFromBridge.h>
+#import <React/RCTBridge+Private.h>
 
-@interface BridgeWrapperDependencyProvider : NSObject <RCTAppDependencyProvider>
-@end
+- (void)viewDidLoad {
+  [super viewDidLoad];
 
-@implementation BridgeWrapperDependencyProvider
+  NSURL *jsCodeLocation = [[NSBundle mainBundle] URLForResource:@"main" withExtension:@"jsbundle"];
+  RCTBridge *bridge = [[RCTBridge alloc] initWithBundleURL:jsCodeLocation
+                                              moduleProvider:nil
+                                               launchOptions:nil];
 
-- (id<RCTBridgeDelegate>)bridgeDelegate {
-  return [BridgeWrapperBridgeDelegate new];
-}
+  // 🧠 Ręczne uruchomienie SurfacePresenter (zastępuje AppDelegate)
+  RCTRuntimeExecutor runtimeExecutor = RCTRuntimeExecutorFromBridge(bridge);
+  RCTSurfacePresenterBridgeAdapter *adapter = [[RCTSurfacePresenterBridgeAdapter alloc] initWithBridge:bridge
+                                                                                      runtimeExecutor:runtimeExecutor];
+  bridge.surfacePresenter = adapter.surfacePresenter;
 
-@end
-
-__attribute__((constructor))
-static void RegisterBridgeWrapperDependencyProvider() {
-  RCTAppSetupSetAppDependencyProvider([BridgeWrapperDependencyProvider new]);
+  RCTRootView *rootView = [[RCTRootView alloc] initWithBridge:bridge
+                                                   moduleName:@"rnbridge"
+                                            initialProperties:nil];
+  rootView.frame = self.view.bounds;
+  [self.view addSubview:rootView];
 }
