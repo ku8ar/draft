@@ -1,21 +1,17 @@
-#import <Foundation/Foundation.h>
-#import <React/RCTAppDependencyProvider.h>
+// scripts/build-remote.js
+import { bundle } from '@callstack/repack';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
-@interface BridgeProvider : NSObject <RCTAppDependencyProvider>
-@end
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-
-
-
-
-
-#import "BridgeProvider.h"
-#import "BridgeBundle.h"
-
-@implementation BridgeProvider
-
-- (id<RCTBridgeDelegate>)bridgeDelegate {
-  return [BridgeBundle new];
-}
-
-@end
+bundle({
+  platform: 'ios',
+  mode: 'production',
+  entry: path.resolve(__dirname, '../index.js'),
+  output: path.resolve(__dirname, '../dist/ios'),
+}).catch(err => {
+  console.error('[Repack] Build failed:', err);
+  process.exit(1);
+});
