@@ -147,7 +147,7 @@ let vc = RNBridgeViewController()
 
 ## Troubleshooting
 
-### Crash: `unrecognized selector sent to instance`
+### Crash: `unrecognized selector sent to instance caused by Fabric` 
 
 If you encounter a crash like:
 
@@ -158,6 +158,8 @@ unrecognized selector sent to instance
 when running the host app on iOS, and you're using React Native 0.70+ or Re.Pack, it's likely that **Fabric (the New Architecture)** was unintentionally enabled.
 
 This can happen even if you're not explicitly using Fabric, as some RN versions and libraries enable it by default under certain conditions.
+
+In particular, if you're using `react-native-screens`, it may attempt to invoke Fabric-related functionality during initialization — even when your app isn't Fabric-enabled.
 
 #### ✅ Solution: Disable Fabric explicitly
 
@@ -175,6 +177,8 @@ pod install
 ```
 
 This ensures the project is built using the **legacy architecture**, which avoids linking issues with TurboModules and Fabric-enabled symbols that may not exist in the host app.
+
+> ℹ️ Fabric is officially supported in precompiled RN frameworks starting from **React Native 0.79**. If you're targeting earlier versions, it is recommended to keep Fabric disabled.
 
 ---
 
