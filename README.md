@@ -1,9 +1,10 @@
-project.afterEvaluate {
-  project.repositories.maven { ->
-    url = URI.create("https://maven.pkg.github.com/package")
-    credentials { cred ->
-      cred.username = System.getenv("MAVEN_USERNAME")
-      cred.password = System.getenv("MAVEN_PASSWORD")
-    }
-  }
+def localPropertiesFile = new File(rootDir, "local.properties")
+def nexusUsername = ""
+def nexusPassword = ""
+
+if (localPropertiesFile.exists()) {
+    def props = new Properties()
+    props.load(new FileInputStream(localPropertiesFile))
+    nexusUsername = props.getProperty("nexusUsername") ?: ""
+    nexusPassword = props.getProperty("nexusPassword") ?: ""
 }
