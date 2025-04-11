@@ -1,10 +1,12 @@
-def localPropertiesFile = new File(rootDir, "local.properties")
-def nexusUsername = ""
-def nexusPassword = ""
-
-if (localPropertiesFile.exists()) {
-    def props = new Properties()
-    props.load(new FileInputStream(localPropertiesFile))
-    nexusUsername = props.getProperty("nexusUsername") ?: ""
-    nexusPassword = props.getProperty("nexusPassword") ?: ""
+gradle.beforeProject {
+    project.repositories.all {
+        removeIf { repo ->
+            repo instanceof MavenArtifactRepository && (
+                repo.url.toString().contains("repo.maven.apache.org") ||
+                repo.url.toString().contains("jcenter") ||
+                repo.url.toString().contains("dl.google.com")
+            )
+        }
+        // Dodaj własny Nexus ponownie, jeśli usunięto
+    }
 }
