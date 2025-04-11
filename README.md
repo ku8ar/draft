@@ -1,28 +1,17 @@
-post_install do |installer|
-  ...
-  updateSandboxSyncMessagesIfNeeded()
-end
+  app_project_path = File.join(__dir__, 'Bridge.xcodeproj')
+  app_project = Xcodeproj::Project.open(app_project_path)
 
-def updateSandboxSyncMessagesIfNeeded
-  updateSandboxSyncMessageIfNeeded('MyApplication.xcodeproj')
-end
+  # 🔍 znajdź target 'Bridge'
+  bridge_target = app_project.targets.find { |t| t.name == 'Bridge' }
 
-def updateSandboxSyncMessageIfNeeded(projectFile)
-  project = Xcodeproj::Project.open(projectFile)
-  changed = false
-
-  project.targets.each do |target|
-    target.build_phases.each do |build_phase|
-      if defined?(build_phase.shell_script) && build_phase.shell_script.include?("pod install")
-        script = build_phase.shell_script.gsub("The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.",
-                                               "The sandbox is not in sync, please run './my-fancy-script.sh' to fix.")
-        build_phase.shell_script = script
-        changed = true
+  if bridge_target
+    bridge_target.shell_script_build_phases.each do |phase|
+      if phase.name == '[CP] Copy Pods Resources'
+        # 🧼 Nadpisz zawartość skryptu, by nic nie robił
+        phase.shell_script = 'echo "disabled [CP] Copy Pods Resources for Bridge"'
       end
     end
-  end
 
-  if changed
-    project.save()
+    # 💾 Zapisz zmiany
+    app_project.save
   end
-end
