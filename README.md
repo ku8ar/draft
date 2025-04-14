@@ -1,7 +1,18 @@
-pod 'React', :path => '../node_modules/react-native', :modular_headers => true
-pod 'React-Core', :path => '../node_modules/react-native', :modular_headers => true
-pod 'React-RCTBridge', :path => '../node_modules/react-native', :modular_headers => true
-pod 'ReactCommon', :path => '../node_modules/react-native', :modular_headers => true
+post_install do |installer|
+  react_pods = [
+    'React',
+    'React-Core',
+    'React-RCTBridge',
+    'ReactCommon',
+    'RCTTypeSafety',
+    'RCTRequired'
+  ]
 
-
-pod 'onfido-react-native-sdk', :path => '../node_modules/@onfido/react-native-sdk', :modular_headers => true
+  installer.pods_project.targets.each do |target|
+    if react_pods.include?(target.name)
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+    end
+  end
+end
