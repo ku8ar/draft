@@ -1,13 +1,11 @@
-#import <React/RCTEventEmitter.h>
 #import <React/RCTBridgeModule.h>
-#import "OnfidoSdk-Swift.h"
+#import <React/RCTEventEmitter.h>
 
 @interface OnfidoSdk : RCTEventEmitter <RCTBridgeModule>
 @end
 
 @implementation OnfidoSdk {
   BOOL hasListeners;
-  static OnfidoSdk *_instance;
 }
 
 RCT_EXPORT_MODULE()
@@ -16,19 +14,8 @@ RCT_EXPORT_MODULE()
   return NO;
 }
 
-- (instancetype)init {
-  if (self = [super init]) {
-    _instance = self;
-  }
-  return self;
-}
-
-+ (OnfidoSdk *)instance {
-  return _instance;
-}
-
 - (NSArray<NSString *> *)supportedEvents {
-  return @[@"onfidoMediaCallback", @"onTokenRequested", @"onTokenGenerated"];
+  return [[OnfidoSdkBridge shared] supportedEvents];
 }
 
 - (void)startObserving {
@@ -39,42 +26,32 @@ RCT_EXPORT_MODULE()
   hasListeners = NO;
 }
 
-- (void)emit:(NSString *)name body:(id)body {
+- (void)sendEvent:(NSString *)name body:(id)body {
   if (hasListeners) {
-    [self sendEventWithName:name body:body];
+    [super sendEventWithName:name body:body];
   }
 }
 
 RCT_EXPORT_METHOD(start:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-  [[OnfidoSdk shared] startWith:config resolve:resolve reject:reject];
+                  rejecter:(RCTPromiseRejectBlock)reject) {
+  [[OnfidoSdkBridge shared] startWith:config
+                              resolve:^(id result) { resolve(result); }
+                              reject:^(NSString *code, NSString *message, NSError *error) {
+                                reject(code, message, error);
+                              }];
 }
 
 RCT_EXPORT_METHOD(withMediaCallbacksEnabled) {
-  [[OnfidoSdk shared] withMediaCallbacksEnabled];
+  [[OnfidoSdkBridge shared] withMediaCallbacksEnabled];
 }
 
 RCT_EXPORT_METHOD(withBiometricTokenCallback) {
-  [[OnfidoSdk shared] withBiometricTokenCallback];
+  [[OnfidoSdkBridge shared] withBiometricTokenCallback];
 }
 
 RCT_EXPORT_METHOD(provideBiometricToken:(NSString *)biometricToken) {
-  [[OnfidoSdk shared] provideBiometricToken:biometricToken];
-}
-
-// 👇 metody wołane ze Swifta
-+ (void)sendMedia:(NSDictionary *)payload {
-  [[self instance] emit:@"onfidoMediaCallback" body:payload];
-}
-
-+ (void)sendTokenRequested:(NSDictionary *)payload {
-  [[self instance] emit:@"onTokenRequested" body:payload];
-}
-
-+ (void)sendTokenGenerated:(NSDictionary *)payload {
-  [[self instance] emit:@"onTokenGenerated" body:payload];
+  [[OnfidoSdkBridge shared] provideBiometricToken:biometricToken];
 }
 
 @end
