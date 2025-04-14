@@ -1,5 +1,12 @@
+//
+//  OnfidoSdk.m
+//
+//  Copyright © 2016-2025 Onfido. All rights reserved.
+//
+
 #import <React/RCTBridgeModule.h>
 #import <React/RCTEventEmitter.h>
+#import "onfido_react_native_sdk-Swift.h"
 
 @interface OnfidoSdk : RCTEventEmitter <RCTBridgeModule>
 @end
@@ -15,7 +22,7 @@ RCT_EXPORT_MODULE()
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-  return [[OnfidoSdkBridge shared] supportedEvents];
+  return @[@"onfidoMediaCallback", @"onTokenRequested", @"onTokenGenerated"];
 }
 
 - (void)startObserving {
@@ -34,7 +41,8 @@ RCT_EXPORT_MODULE()
 
 RCT_EXPORT_METHOD(start:(NSDictionary *)config
                   resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject) {
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
   [[OnfidoSdkBridge shared] startWith:config
                               resolve:^(id result) { resolve(result); }
                               reject:^(NSString *code, NSString *message, NSError *error) {
