@@ -1,18 +1,27 @@
 post_install do |installer|
-  react_pods = [
-    'React',
-    'React-Core',
-    'React-RCTBridge',
-    'ReactCommon',
-    'RCTTypeSafety',
-    'RCTRequired'
+  config = use_native_modules!
+
+  react_modular = %w[
+    React
+    React-Core
+    React-CoreModules
+    React-RCTBridge
+    ReactCommon
+    RCTTypeSafety
+    RCTRequired
   ]
 
-  installer.pods_project.targets.each do |target|
-    if react_pods.include?(target.name)
-      target.build_configurations.each do |config|
-        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+  installer.pod_targets.each do |pod|
+    if react_modular.include?(pod.name)
+      pod.specs.each do |spec|
+        spec.instance_variable_set(:@modular_headers, true)
       end
     end
   end
+
+  react_native_post_install(
+    installer,
+    config[:reactNativePath],
+    :mac_catalyst_enabled => false
+  )
 end
