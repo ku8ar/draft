@@ -4,15 +4,17 @@ import urllib.error
 import socketserver
 from pathlib import Path
 from datetime import datetime, timezone
-import email.utils  # for RFC 2822 date parsing/formatting
+import email.utils
+import os
 
 PORT = 9292
 SCRIPT_DIR = Path(__file__).resolve().parent
 CACHE_DIR = SCRIPT_DIR / ".maven-proxy-cache"
 
 REPOSITORIES = [
+    'https://maven.google.com/',
     'https://repo1.maven.org/maven2/',
-    'https://backup.repo.local/repo/'
+    'https://plugins.gradle.org/m2/'
 ]
 
 proxy_handler = urllib.request.ProxyHandler()
@@ -25,26 +27,21 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.handle_method('HEAD')
 
-    def handle_method(self, method):
-        path = self.path.lstrip('/')
+    def try_fetch(self, path, method):
         cache_file = CACHE_DIR / Path(path)
         headers_file = cache_file.with_suffix(cache_file.suffix + ".headers")
 
-        # --- Check cache ---
+        # Serve from cache
         if cache_file.exists():
-            # Handle If-Modified-Since for HEAD or GET
             if_modified_since = self.headers.get("If-Modified-Since")
             if if_modified_since:
                 file_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime, tz=timezone.utc)
                 ims_dt = email.utils.parsedate_to_datetime(if_modified_since)
-
                 if file_mtime <= ims_dt:
                     self.send_response(304)
                     self.end_headers()
-                    print(f"[CACHE] {method} 304 {cache_file}")
-                    return
+                    return True
 
-            # Serve cached file
             self.send_response(200)
             content_type = "application/octet-stream"
             if headers_file.exists():
@@ -60,41 +57,32 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             if method == 'GET':
                 with cache_file.open('rb') as f:
                     self.wfile.write(f.read())
-                print(f"[CACHE] GET {cache_file}")
-            else:
-                print(f"[CACHE] HEAD {cache_file}")
-            return
+            print(f"[CACHE] {method} {path}")
+            return True
 
-        # --- Try remote repos ---
+        # Try all repositories
         for base_url in REPOSITORIES:
             full_url = base_url + path
             req = urllib.request.Request(full_url, method=method)
-
             try:
                 with opener.open(req) as res:
                     status = res.getcode()
                     self.send_response(status)
-
-                    headers = []
-                    for key, value in res.getheaders():
+                    headers = res.getheaders()
+                    for key, value in headers:
                         self.send_header(key, value)
-                        headers.append(f"{key}: {value}")
                     self.end_headers()
 
                     if method == 'GET':
                         body = res.read()
                         self.wfile.write(body)
 
-                        # Cache body
                         cache_file.parent.mkdir(parents=True, exist_ok=True)
                         with cache_file.open('wb') as f:
                             f.write(body)
-
-                        # Cache headers (content-type etc.)
                         with headers_file.open('w') as f:
-                            f.write('\n'.join(headers))
+                            f.write('\n'.join(f"{k}: {v}" for k, v in headers))
 
-                        # Set file modification time from Date header
                         date_header = res.headers.get("Date")
                         if date_header:
                             try:
@@ -104,28 +92,46 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                             except Exception:
                                 pass
 
-                        print(f"[{status}] Cached {full_url} -> {cache_file}")
-                    else:
-                        print(f"[{status}] HEAD {full_url}")
-                    return
+                    print(f"[{status}] {method} {full_url}")
+                    return True
             except urllib.error.HTTPError as e:
                 print(f"[{e.code}] {method} {full_url}")
-                if e.code in (401, 403, 404):
+                if 400 <= e.code < 600:
                     continue
-                else:
-                    break
             except Exception as e:
                 print(f"[ERR] {method} {full_url}: {e}")
                 continue
+        return False
 
+    def try_plugin_marker_fallback(self, path, method):
+        parts = path.strip("/").split("/")
+        if len(parts) < 4 or parts[-1].endswith(".sha1"):
+            return False
+        group_parts = parts[:-3]
+        artifact = parts[-3]
+        version = parts[-2]
+        filename = parts[-1]
+        group_id = ".".join(group_parts)
+        marker_artifact = f"{group_id}.{artifact}.gradle.plugin"
+        new_parts = group_parts + [artifact, marker_artifact, version, f"{marker_artifact}-{version}" + filename[filename.find("."):]]
+        new_path = "/".join(new_parts)
+        print(f"[FALLBACK] Trying plugin marker path: {new_path}")
+        return self.try_fetch(new_path, method)
+
+    def handle_method(self, method):
+        path = self.path.lstrip('/')
+        if self.try_fetch(path, method):
+            return
+        if self.try_plugin_marker_fallback(path, method):
+            return
         self.send_response(404)
         self.end_headers()
         if method == 'GET':
             self.wfile.write(b'Artifact not found in any repository.')
-        print(f"[404] Not found: {method} {self.path}")
+        print(f"[404] {method} {self.path}")
 
 if __name__ == '__main__':
     with socketserver.ThreadingTCPServer(("", PORT), ProxyHandler) as httpd:
-        print(f"Maven proxy with cache, ETag-like HEAD, and content-type headers at http://localhost:{PORT}/")
+        print(f"Maven proxy with disk cache and plugin marker fallback running at http://localhost:{PORT}/")
         print(f"Cache directory: {CACHE_DIR}")
         httpd.serve_forever()
