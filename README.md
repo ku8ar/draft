@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import email.utils
 import os
+import re
 
 PORT = 9292
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -21,13 +22,34 @@ proxy_handler = urllib.request.ProxyHandler()
 opener = urllib.request.build_opener(proxy_handler)
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.handle_method('GET')
+    def do_GET(self): self.handle_method('GET')
+    def do_HEAD(self): self.handle_method('HEAD')
 
-    def do_HEAD(self):
-        self.handle_method('HEAD')
+    def handle_method(self, method):
+        path = self.path.lstrip('/')
 
-    def try_fetch(self, path, method):
+        if self.try_fetch(path, method):
+            return
+
+        # Try plugin marker path (only for plugins.gradle.org)
+        plugin_path = self.to_plugin_marker_path(path)
+        if plugin_path:
+            if self.try_fetch(plugin_path, method, restrict_to='plugins.gradle.org'):
+                return
+
+        # Try maven path fallback (if input is a plugin marker path)
+        maven_path = self.to_maven_path_from_plugin_marker(path)
+        if maven_path:
+            if self.try_fetch(maven_path, method):
+                return
+
+        self.send_response(404)
+        self.end_headers()
+        if method == 'GET':
+            self.wfile.write(b'Artifact not found in any repository.')
+        print(f"[404] {method} {self.path}")
+
+    def try_fetch(self, path, method, restrict_to=None):
         cache_file = CACHE_DIR / Path(path)
         headers_file = cache_file.with_suffix(cache_file.suffix + ".headers")
 
@@ -55,13 +77,18 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
             if method == 'GET':
-                with cache_file.open('rb') as f:
-                    self.wfile.write(f.read())
+                try:
+                    with cache_file.open('rb') as f:
+                        self.wfile.write(f.read())
+                except BrokenPipeError:
+                    print(f"[WARN] Broken pipe sending cached {path}")
             print(f"[CACHE] {method} {path}")
             return True
 
-        # Try all repositories
         for base_url in REPOSITORIES:
+            if restrict_to and restrict_to not in base_url:
+                continue
+
             full_url = base_url + path
             req = urllib.request.Request(full_url, method=method)
             try:
@@ -75,8 +102,10 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
                     if method == 'GET':
                         body = res.read()
-                        self.wfile.write(body)
-
+                        try:
+                            self.wfile.write(body)
+                        except BrokenPipeError:
+                            print(f"[WARN] Broken pipe sending {path}")
                         cache_file.parent.mkdir(parents=True, exist_ok=True)
                         with cache_file.open('wb') as f:
                             f.write(body)
@@ -103,35 +132,36 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 continue
         return False
 
-    def try_plugin_marker_fallback(self, path, method):
-        parts = path.strip("/").split("/")
-        if len(parts) < 4 or parts[-1].endswith(".sha1"):
-            return False
+    def to_plugin_marker_path(self, path):
+        parts = path.strip('/').split('/')
+        if len(parts) < 4:
+            return None
         group_parts = parts[:-3]
         artifact = parts[-3]
         version = parts[-2]
         filename = parts[-1]
+
+        if '.' in artifact:  # looks like plugin marker already
+            return None
+
         group_id = ".".join(group_parts)
         marker_artifact = f"{group_id}.{artifact}.gradle.plugin"
-        new_parts = group_parts + [artifact, marker_artifact, version, f"{marker_artifact}-{version}" + filename[filename.find("."):]]
-        new_path = "/".join(new_parts)
-        print(f"[FALLBACK] Trying plugin marker path: {new_path}")
-        return self.try_fetch(new_path, method)
+        new_path = group_parts + [artifact, marker_artifact, version, f"{marker_artifact}-{version}" + filename[filename.find('.'):]]
 
-    def handle_method(self, method):
-        path = self.path.lstrip('/')
-        if self.try_fetch(path, method):
-            return
-        if self.try_plugin_marker_fallback(path, method):
-            return
-        self.send_response(404)
-        self.end_headers()
-        if method == 'GET':
-            self.wfile.write(b'Artifact not found in any repository.')
-        print(f"[404] {method} {self.path}")
+        return "/".join(new_path)
+
+    def to_maven_path_from_plugin_marker(self, path):
+        match = re.match(r"(.+/)([^/]+)\.gradle\.plugin/([^/]+)/\2\.gradle\.plugin-\3\.(pom|jar)", path)
+        if not match:
+            return None
+        prefix, group_and_artifact, version, ext = match.groups()
+        group_parts = prefix.strip('/').split('/')[:-1]
+        artifact = group_and_artifact.split('.')[-1]
+        new_path = group_parts + [artifact, version, f"{artifact}-{version}.{ext}"]
+        return "/".join(new_path)
 
 if __name__ == '__main__':
     with socketserver.ThreadingTCPServer(("", PORT), ProxyHandler) as httpd:
-        print(f"Maven proxy with disk cache and plugin marker fallback running at http://localhost:{PORT}/")
-        print(f"Cache directory: {CACHE_DIR}")
+        print(f"Maven proxy with plugin/maven fallback at http://localhost:{PORT}/")
+        print(f"Cache dir: {CACHE_DIR}")
         httpd.serve_forever()
