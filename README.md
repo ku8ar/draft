@@ -2,17 +2,18 @@ import http.server
 import urllib.request
 import urllib.error
 import socketserver
-import os
 from pathlib import Path
 
 PORT = 9292
-CACHE_DIR = Path.home() / ".maven-proxy-cache"
+SCRIPT_DIR = Path(__file__).resolve().parent
+CACHE_DIR = SCRIPT_DIR / ".maven-proxy-cache"
 
 REPOSITORIES = [
     'https://repo1.maven.org/maven2/',
     'https://backup.repo.local/repo/'
 ]
 
+# Use system proxy if available
 proxy_handler = urllib.request.ProxyHandler()
 opener = urllib.request.build_opener(proxy_handler)
 
@@ -25,18 +26,24 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
     def handle_method(self, method):
         path = self.path.lstrip('/')
-        cache_file = CACHE_DIR / path
+        cache_file = CACHE_DIR / Path(path)
 
-        # If cached, return it immediately (only for GET)
-        if method == 'GET' and cache_file.exists():
+        # Serve from cache if available
+        if cache_file.exists():
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(cache_file.stat().st_size))
             self.end_headers()
-            with cache_file.open('rb') as f:
-                self.wfile.write(f.read())
-            print(f"[CACHE] {cache_file}")
+
+            if method == 'GET':
+                with cache_file.open('rb') as f:
+                    self.wfile.write(f.read())
+                print(f"[CACHE] GET {cache_file}")
+            else:
+                print(f"[CACHE] HEAD {cache_file}")
             return
 
+        # Try downloading from remote repositories
         for base_url in REPOSITORIES:
             full_url = base_url + path
             req = urllib.request.Request(full_url, method=method)
@@ -79,6 +86,6 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     with socketserver.ThreadingTCPServer(("", PORT), ProxyHandler) as httpd:
-        print(f"Maven proxy with disk cache listening at http://localhost:{PORT}/")
+        print(f"Maven proxy with disk cache running at http://localhost:{PORT}/")
         print(f"Cache directory: {CACHE_DIR}")
         httpd.serve_forever()
