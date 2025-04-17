@@ -1,24 +1,26 @@
-remotes: {
-  ChildApp: `promise new Promise(async function(resolve, reject) {
-    try {
-      const res = await fetch("http://localhost:8000/index.bundle");
-      const jsCode = await res.text();
+      remotes: {
+        ChildApp: `promise new Promise(function(resolve, reject) {
+          fetch("http://localhost:8000/remoteEntry.bundle")
+            .then(function(res) { return res.text(); })
+            .then(function(code) {
+              const remoteInit = new Function(code);
+              remoteInit();
 
-      const remoteInit = new Function(jsCode);
+              // Nie używamy __webpack_init_sharing__ w RN — to API z Webpack Web
+              if (!globalThis.ChildApp) {
+                throw new Error("ChildApp global not found");
+              }
 
-      await __webpack_init_sharing__('default'); // 🔑 kluczowy krok
+              // Niektóre bundlery wymagają initowania ręcznie
+              if (globalThis.ChildApp.init) {
+                globalThis.ChildApp.init(global.__webpack_share_scopes__.default || {});
+              }
 
-      remoteInit(); // teraz wykonaj remote
-
-      await globalThis.ChildApp.init(__webpack_share_scopes__.default);
-
-      resolve({
-        get: globalThis.ChildApp.get,
-        init: globalThis.ChildApp.init,
-      });
-    } catch (err) {
-      console.error("Failed to load ChildApp:", err);
-      reject(err);
-    }
-  })`
-}
+              resolve({
+                get: globalThis.ChildApp.get,
+                init: globalThis.ChildApp.init,
+              });
+            })
+            .catch(reject);
+        })`
+      },
