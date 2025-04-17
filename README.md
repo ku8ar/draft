@@ -1,21 +1,24 @@
 remotes: {
-  SomeApp: `promise new Promise(function(resolve, reject) {
-    fetch("http://localhost:20113/index.bundle")
-      .then(function(res) { return res.text(); })
-      .then(function(jsCode) {
-        new Function(jsCode)();
+  ChildApp: `promise new Promise(async function(resolve, reject) {
+    try {
+      const res = await fetch("http://localhost:8000/index.bundle");
+      const jsCode = await res.text();
 
-        if (!globalThis.SomeApp) {
-          throw new Error("globalThis.SomeApp is not defined after eval");
-        }
+      const remoteInit = new Function(jsCode);
 
-        globalThis.SomeApp.init(__webpack_share_scopes__.default).then(() => {
-          resolve({
-            get: globalThis.SomeApp.get,
-            init: globalThis.SomeApp.init,
-          });
-        }).catch(reject);
-      })
-      .catch(reject);
+      await __webpack_init_sharing__('default'); // 🔑 kluczowy krok
+
+      remoteInit(); // teraz wykonaj remote
+
+      await globalThis.ChildApp.init(__webpack_share_scopes__.default);
+
+      resolve({
+        get: globalThis.ChildApp.get,
+        init: globalThis.ChildApp.init,
+      });
+    } catch (err) {
+      console.error("Failed to load ChildApp:", err);
+      reject(err);
+    }
   })`
 }
