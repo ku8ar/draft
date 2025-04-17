@@ -4,10 +4,17 @@ remotes: {
       .then(function(res) { return res.text(); })
       .then(function(jsCode) {
         new Function(jsCode)();
-        resolve({
-          get: globalThis.SomeApp.get,
-          init: globalThis.SomeApp.init,
-        });
+
+        if (!globalThis.SomeApp) {
+          throw new Error("globalThis.SomeApp is not defined after eval");
+        }
+
+        globalThis.SomeApp.init(__webpack_share_scopes__.default).then(() => {
+          resolve({
+            get: globalThis.SomeApp.get,
+            init: globalThis.SomeApp.init,
+          });
+        }).catch(reject);
       })
       .catch(reject);
   })`
