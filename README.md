@@ -1,78 +1,62 @@
-package com.bridge
+package com.example.myapplication
 
-import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
-import com.facebook.react.ReactActivityDelegate
-import com.facebook.react.ReactRootView
-import com.facebook.react.ReactInstanceManager
-import com.facebook.react.common.LifecycleState
-import com.facebook.react.soloader.OpenSourceMergedSoMapping
-import com.facebook.soloader.SoLoader
-import com.facebook.react.shell.MainReactPackage
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import com.example.myapplication.ui.theme.MyApplicationTheme
 
-// MANUAL LINKING
-import com.onfido.reactnative.sdk.OnfidoSdkPackage
-import com.callstack.repack.ScriptManagerPackage
-import com.th3rdwave.safeareacontext.SafeAreaContextPackage
-import com.swmansion.rnscreens.RNScreensPackage
-// END MANUAL LINKING
-
-class BridgeReactActivity : Activity() {
-
-    private var reactRootView: ReactRootView? = null
-    private var instanceManager: ReactInstanceManager? = null
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            MyApplicationTheme {
+                HostScreen()
+            }
+        }
+    }
+}
 
-        // SoLoader + instanceManager jak poprzednio
-        val application = application as android.app.Application
-        SoLoader.init(application, OpenSourceMergedSoMapping)
+@Composable
+fun HostScreen() {
+    val context = LocalContext.current
+    var input by remember { mutableStateOf("") }
 
-        instanceManager = ReactInstanceManager.builder()
-            .setApplication(application)
-            .setCurrentActivity(this)
-            .setBundleAssetName("index.android.bundle")
-            .setJSMainModulePath("index")
-            .addPackage(MainReactPackage())
-            .addPackage(OnfidoSdkPackage())
-            .addPackage(ScriptManagerPackage())
-            .addPackage(SafeAreaContextPackage())
-            .addPackage(RNScreensPackage())
-            .setUseDeveloperSupport(false)
-            .setInitialLifecycleState(LifecycleState.BEFORE_CREATE)
-            .build()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Android Host App", style = MaterialTheme.typography.headlineSmall)
+        Spacer(modifier = Modifier.height(24.dp))
 
-        reactRootView = ReactRootView(this)
-        reactRootView?.startReactApplication(
-            instanceManager,
-            "rnbridge",
-            null
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it },
+            label = { Text("paste params to RN") },
+            singleLine = true
         )
+        Spacer(modifier = Modifier.height(24.dp))
 
-        setContentView(reactRootView)
-    }
-
-    override fun onResume() {
-        super.onResume()
-        instanceManager?.onHostResume(this, null)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        instanceManager?.onHostPause(this)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        instanceManager?.onHostDestroy(this)
-        reactRootView?.unmountReactApplication()
-    }
-
-    // (opcjonalnie) obsłuż back button
-    override fun onBackPressed() {
-        instanceManager?.onBackPressed()
-        // Jeżeli RN nie obsłuży, wywołaj domyślnie
-        super.onBackPressed()
+        Button(
+            onClick = {
+                val intent = Intent(context, BridgeReactActivity::class.java)
+                intent.putExtra("params", input)
+                context.startActivity(intent)
+            }
+        ) {
+            Text("Open RN")
+        }
     }
 }
