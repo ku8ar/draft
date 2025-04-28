@@ -10,26 +10,25 @@ import Foundation
         self.session = session
     }
 
-    @objc public func fetch(
-        _ urlString: String,
-        resolver resolve: @escaping RCTPromiseResolveBlock,
-        rejecter reject: @escaping RCTPromiseRejectBlock
+    // Interfejs dla bridge'a
+    public func fetch(
+        urlString: String,
+        completion: @escaping (Result<Data, Error>) -> Void
     ) {
         guard let url = URL(string: urlString) else {
-            reject("invalid_url", "Invalid URL", nil)
+            completion(.failure(NSError(domain: "RNBridgeSafeFetch", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
         let task = session.dataTask(with: url) { data, response, error in
             if let error = error {
-                reject("fetch_error", error.localizedDescription, error)
+                completion(.failure(error))
                 return
             }
             guard let data = data else {
-                reject("no_data", "No data returned", nil)
+                completion(.failure(NSError(domain: "RNBridgeSafeFetch", code: 2, userInfo: [NSLocalizedDescriptionKey: "No data returned"])))
                 return
             }
-            let result = String(data: data, encoding: .utf8) ?? ""
-            resolve(result)
+            completion(.success(data))
         }
         task.resume()
     }
