@@ -1,7 +1,7 @@
 import Foundation
 
-@objc public class RNBridgeSafeFetch: NSObject {
-    @objc public static let shared = RNBridgeSafeFetch()
+@objc public class DBSFetch: NSObject {
+    @objc public static let shared = DBSFetch()
     private override init() {}
 
     private var session: URLSession = .shared
@@ -10,13 +10,12 @@ import Foundation
         self.session = session
     }
 
-    // Interfejs dla bridge'a
     public func fetch(
         urlString: String,
         completion: @escaping (Result<Data, Error>) -> Void
     ) {
         guard let url = URL(string: urlString) else {
-            completion(.failure(NSError(domain: "RNBridgeSafeFetch", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
+            completion(.failure(NSError(domain: "DBSFetch", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
             return
         }
         let task = session.dataTask(with: url) { data, response, error in
@@ -25,7 +24,7 @@ import Foundation
                 return
             }
             guard let data = data else {
-                completion(.failure(NSError(domain: "RNBridgeSafeFetch", code: 2, userInfo: [NSLocalizedDescriptionKey: "No data returned"])))
+                completion(.failure(NSError(domain: "DBSFetch", code: 2, userInfo: [NSLocalizedDescriptionKey: "No data returned"])))
                 return
             }
             completion(.success(data))
