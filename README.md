@@ -1,34 +1,24 @@
 import Foundation
+import React
 
-@objc public class DBSFetch: NSObject {
-    @objc public static let shared = DBSFetch()
-    private override init() {}
+@objc(DBSFetchModule)
+class DBSFetchModule: NSObject {
+    @objc static func requiresMainQueueSetup() -> Bool { false }
 
-    private var session: URLSession = .shared
-
-    @objc public func configure(with session: URLSession) {
-        self.session = session
-    }
-
-    public func fetch(
+    @objc(fetch:resolver:rejecter:)
+    func fetch(
         urlString: String,
-        completion: @escaping (Result<Data, Error>) -> Void
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
     ) {
-        guard let url = URL(string: urlString) else {
-            completion(.failure(NSError(domain: "DBSFetch", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])))
-            return
-        }
-        let task = session.dataTask(with: url) { data, response, error in
-            if let error = error {
-                completion(.failure(error))
-                return
+        DBSFetch.shared.fetch(urlString: urlString) { result in
+            switch result {
+            case .success(let data):
+                let resultStr = String(data: data, encoding: .utf8) ?? ""
+                resolve(resultStr)
+            case .failure(let error):
+                reject("fetch_error", error.localizedDescription, error)
             }
-            guard let data = data else {
-                completion(.failure(NSError(domain: "DBSFetch", code: 2, userInfo: [NSLocalizedDescriptionKey: "No data returned"])))
-                return
-            }
-            completion(.success(data))
         }
-        task.resume()
     }
 }
