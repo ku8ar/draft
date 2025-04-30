@@ -1,45 +1,22 @@
-package com.bridge
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
+# Extract React Native version from package.json using grep/sed (no jq)
+RN_VERSION=$(grep -A1 '"react-native"' "$ROOT_DIR/package.json" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
 
-class NativeCallbackModule(
-    private val reactContext: ReactApplicationContext
-) : ReactContextBaseJavaModule(reactContext) {
+if [[ -z "$RN_VERSION" ]]; then
+  echo "Could not find React Native version in package.json"
+  exit 1
+fi
 
-    override fun getName(): String {
-        return "NativeCallbackModule"
-    }
+echo "Detected React Native version: $RN_VERSION"
 
-    companion object {
-        var listener: ((String) -> Unit)? = null
-    }
+# Find and update build.gradle and build.gradle.kts files
+find "$ROOT_DIR/node_modules" \( -name "build.gradle" -o -name "build.gradle.kts" \) | while read -r FILE; do
+  if grep -qE "['\"]com\.facebook\.react:react-android:\+['\"]" "$FILE"; then
+    echo "Updating: $FILE"
+    sed -i.bak -E "s|([\"']com\.facebook\.react:react-android:)\+([\"'])|\1$RN_VERSION\2|g" "$FILE"
+    rm -f "${FILE}.bak"
+  fi
+done
 
-    @ReactMethod
-    fun triggerCallback(message: String) {
-        listener?.invoke(message)
-    }
-}
-
-
-
-
-
-
-package com.bridge
-
-import com.facebook.react.ReactPackage
-import com.facebook.react.bridge.NativeModule
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.uimanager.ViewManager
-
-class BridgeReactPackage : ReactPackage {
-    override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(NativeCallbackModule(reactContext))
-    }
-
-    override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-        return emptyList()
-    }
-}
+echo "Finished updating react-android version"
