@@ -1,22 +1,33 @@
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+package com.yourapp
 
-# Extract React Native version from package.json using grep/sed (no jq)
-RN_VERSION=$(grep -A1 '"react-native"' "$ROOT_DIR/package.json" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+import com.facebook.react.bridge.*
+import kotlinx.coroutines.*
+import okhttp3.Request
+import java.io.IOException
 
-if [[ -z "$RN_VERSION" ]]; then
-  echo "Could not find React Native version in package.json"
-  exit 1
-fi
+class DBSFetchModule(reactContext: ReactApplicationContext) :
+    ReactContextBaseJavaModule(reactContext) {
 
-echo "Detected React Native version: $RN_VERSION"
+    override fun getName(): String = "DBSFetchModule"
 
-# Find and update build.gradle and build.gradle.kts files
-find "$ROOT_DIR/node_modules" \( -name "build.gradle" -o -name "build.gradle.kts" \) | while read -r FILE; do
-  if grep -qE "['\"]com\.facebook\.react:react-android:\+['\"]" "$FILE"; then
-    echo "Updating: $FILE"
-    sed -i.bak -E "s|([\"']com\.facebook\.react:react-android:)\+([\"'])|\1$RN_VERSION\2|g" "$FILE"
-    rm -f "${FILE}.bak"
-  fi
-done
+    @ReactMethod
+    fun fetch(url: String, promise: Promise) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val request = Request.Builder().url(url).build()
+                val response = DBSFetch.shared().getClient().newCall(request).execute()
 
-echo "Finished updating react-android version"
+                if (!response.isSuccessful) {
+                    promise.reject("HTTP_ERROR", "HTTP error: ${response.code}")
+                    return@launch
+                }
+
+                val body = response.body?.string() ?: ""
+                promise.resolve(body)
+
+            } catch (e: IOException) {
+                promise.reject("NETWORK_ERROR", e.message, e)
+            }
+        }
+    }
+}
