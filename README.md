@@ -1,21 +1,40 @@
-#!/bin/bash
+# Source directory (local Gradle cache)
+GRADLE_CACHE="$HOME/.gradle/caches/modules-2/files-2.1"
 
-# Wejdź do katalogu .maven-proxy-cache
-cd .maven-proxy-cache || { echo "Nie znaleziono katalogu .maven-proxy-cache"; exit 1; }
+# Target directory (Maven proxy repo)
+PROXY_CACHE="./.maven-proxy-cache"
 
-# Wypisz co robimy
-echo "Generowanie brakujących plików .sha1 dla artefaktów (.jar, .aar, .pom, .module)..."
+# Check if Gradle cache exists
+if [ ! -d "$GRADLE_CACHE" ]; then
+    echo "❌ ERROR: Gradle cache directory not found: $GRADLE_CACHE"
+    exit 1
+fi
 
-# Przejdź po wszystkich plikach .jar, .aar, .pom, .module
-find . -type f \( -name "*.jar" -o -name "*.aar" -o -name "*.pom" -o -name "*.module" \) | while read -r file; do
-    sha1file="${file}.sha1"
+echo "✅ Syncing Gradle cache from $GRADLE_CACHE to $PROXY_CACHE..."
 
-    if [ -f "$sha1file" ]; then
-        echo "[OK] $sha1file istnieje"
-    else
-        echo "[GEN] Generuję $sha1file"
-        sha1sum "$file" | awk '{print $1}' > "$sha1file"
-    fi
+# Iterate over all relevant artifact files
+find "$GRADLE_CACHE" -type f \( -name "*.jar" -o -name "*.aar" -o -name "*.pom" -o -name "*.module" \) | while read -r file; do
+    # Relative path inside files-2.1 structure
+    relpath="${file#$GRADLE_CACHE/}"
+
+    # Target path in .maven-proxy-cache
+    target="$PROXY_CACHE/$relpath"
+
+    # Ensure target directory exists
+    mkdir -p "$(dirname "$target")"
+
+    # Copy the file
+    cp "$file" "$target"
+
+    echo "[SYNC] $relpath"
 done
 
-echo "Zakończono generowanie checksum SHA1."
+echo "✅ Gradle cache sync completed."
+
+# Optional: Generate missing SHA1 checksums (if generate-sha1.sh exists)
+if [ -f "./generate-sha1.sh" ]; then
+    echo "🔄 Running SHA1 checksum generation..."
+    ./generate-sha1.sh
+fi
+
+echo "✅ All done. You can now push .maven-proxy-cache to Bitbucket."
