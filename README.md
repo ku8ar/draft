@@ -1,28 +1,60 @@
 package com.tealium.bridge
 
-import com.facebook.react.ReactApplication
-import com.facebook.react.ReactInstanceManager
 import com.tealium.core.Tealium
-import com.tealium.react.TealiumReact
 
 class RNTealium private constructor() {
 
     companion object {
-        @Volatile
-        private var instance: RNTealium? = null
-
-        fun getInstance(): RNTealium {
-            return instance ?: synchronized(this) {
-                instance ?: RNTealium().also { instance = it }
-            }
-        }
+        @JvmStatic
+        fun shared(): RNTealium = Holder.INSTANCE
     }
 
-    fun configure(tealiumInstance: Tealium, reactApp: ReactApplication) {
-        val reactInstanceManager: ReactInstanceManager = reactApp.reactNativeHost.reactInstanceManager
-        val nativeModule = reactInstanceManager.currentReactContext?.nativeModuleRegistry
-            ?.getModule(TealiumReact::class.java)
+    private object Holder {
+        val INSTANCE = RNTealium()
+    }
 
-        nativeModule?.tealium = tealiumInstance
+    @Volatile
+    internal var tealiumInstance: Tealium? = null
+        set(value) {
+            field = value
+            // Jeśli RNTealiumModule już istnieje ➔ próbujemy wstrzyknąć
+            RNTealiumModule.tryInjectTealium()
+        }
+
+    fun configure(tealium: Tealium) {
+        tealiumInstance = tealium
+    }
+}
+
+
+
+package com.tealium.bridge
+
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.tealium.react.TealiumReact
+
+class RNTealiumModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+
+    init {
+        instance = this
+        tryInjectTealium()
+    }
+
+    override fun getName(): String = "RNTealium"
+
+    companion object {
+        @Volatile
+        private var instance: RNTealiumModule? = null
+
+        internal fun tryInjectTealium() {
+            val module = instance ?: return
+            val tealium = RNTealium.shared().tealiumInstance ?: return
+
+            val tealiumReact = module.reactContext.nativeModuleRegistry.getModule(TealiumReact::class.java)
+                ?: throw IllegalStateException("TealiumReact module not initialized.")
+
+            tealiumReact.tealium = tealium
+        }
     }
 }
