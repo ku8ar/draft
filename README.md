@@ -1,15 +1,15 @@
-import java.util.Properties
+#!/bin/bash
 
-val userGradleProperties = Properties()
-val userGradleFile = File(System.getProperty("user.home"), ".gradle/gradle.properties")
+set -e
 
-if (userGradleFile.exists()) {
-    userGradleFile.inputStream().use { userGradleProperties.load(it) }
-} else {
-    println("WARNING: ~/.gradle/gradle.properties not found")
-}
+echo "Replacing mavenCentral() with env-based maven block..."
 
-val username = userGradleProperties.getProperty("myUsername") ?: "defaultUser"
-val password = userGradleProperties.getProperty("myPassword") ?: "defaultPass"
+FIND_DIR="../node_modules"
+REPLACEMENT='maven {\n    url "https://my.rpoxy"\n    credentials {\n        username = System.getenv("MY_REPO_USERNAME") ?: "defaultUser"\n        password = System.getenv("MY_REPO_PASSWORD") ?: "defaultPass"\n    }\n}'
 
-println("Loaded credentials: $username / $password")
+find "$FIND_DIR" -type f -name "build.gradle" | while read -r file; do
+  echo "Processing $file"
+  sed -i '' "s|mavenCentral()|$REPLACEMENT|g" "$file"
+done
+
+echo "Done."
