@@ -1,16 +1,15 @@
-#!/bin/bash
+import java.util.Properties
 
-set -e
+val userGradleProperties = Properties()
+val userGradleFile = File(System.getProperty("user.home"), ".gradle/gradle.properties")
 
-echo "Fixing mavenCentral() in node_modules..."
+if (userGradleFile.exists()) {
+    userGradleFile.inputStream().use { userGradleProperties.load(it) }
+} else {
+    println("WARNING: ~/.gradle/gradle.properties not found")
+}
 
-FIND_DIR="../node_modules"
-REPLACEMENT='maven {\n    url "https://my.rpoxy"\n    credentials {\n        username dupa\n        password dupa\n    }\n}'
+val username = userGradleProperties.getProperty("myUsername") ?: "defaultUser"
+val password = userGradleProperties.getProperty("myPassword") ?: "defaultPass"
 
-find "$FIND_DIR" -type f -name "build.gradle" | while read -r file; do
-  echo "Processing $file"
-  # MacOS (BSD) sed syntax
-  sed -i '' "s/mavenCentral()/$REPLACEMENT/g" "$file"
-done
-
-echo "Done."
+println("Loaded credentials: $username / $password")
