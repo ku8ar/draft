@@ -1,60 +1,16 @@
-package com.tealium.bridge
+#!/bin/bash
 
-import com.tealium.core.Tealium
+set -e
 
-class RNTealium private constructor() {
+echo "Fixing mavenCentral() in node_modules..."
 
-    companion object {
-        @JvmStatic
-        fun shared(): RNTealium = Holder.INSTANCE
-    }
+FIND_DIR="../node_modules"
+REPLACEMENT='maven {\n    url "https://my.rpoxy"\n    credentials {\n        username dupa\n        password dupa\n    }\n}'
 
-    private object Holder {
-        val INSTANCE = RNTealium()
-    }
+find "$FIND_DIR" -type f -name "build.gradle" | while read -r file; do
+  echo "Processing $file"
+  # MacOS (BSD) sed syntax
+  sed -i '' "s/mavenCentral()/$REPLACEMENT/g" "$file"
+done
 
-    @Volatile
-    internal var tealiumInstance: Tealium? = null
-        set(value) {
-            field = value
-            // Jeśli RNTealiumModule już istnieje ➔ próbujemy wstrzyknąć
-            RNTealiumModule.tryInjectTealium()
-        }
-
-    fun configure(tealium: Tealium) {
-        tealiumInstance = tealium
-    }
-}
-
-
-
-package com.tealium.bridge
-
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.tealium.react.TealiumReact
-
-class RNTealiumModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
-
-    init {
-        instance = this
-        tryInjectTealium()
-    }
-
-    override fun getName(): String = "RNTealium"
-
-    companion object {
-        @Volatile
-        private var instance: RNTealiumModule? = null
-
-        internal fun tryInjectTealium() {
-            val module = instance ?: return
-            val tealium = RNTealium.shared().tealiumInstance ?: return
-
-            val tealiumReact = module.reactContext.nativeModuleRegistry.getModule(TealiumReact::class.java)
-                ?: throw IllegalStateException("TealiumReact module not initialized.")
-
-            tealiumReact.tealium = tealium
-        }
-    }
-}
+echo "Done."
