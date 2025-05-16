@@ -1,5 +1,3 @@
-set -e
-
 echo "Safe replacing google() and mavenCentral() in node_modules..."
 
 FIND_DIR="../node_modules"
