@@ -1,66 +1,78 @@
-#import "DBSFetchModule.h"
+package com.yourpackage
 
-@implementation DBSFetchModule
+import com.facebook.react.bridge.*
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
-RCT_EXPORT_MODULE(DBSFetchModule)
+class DBSFetchModule(reactContext: ReactApplicationContext) :
+    ReactContextBaseJavaModule(reactContext) {
 
-RCT_EXPORT_METHOD(fetch:(NSDictionary *)request
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-  NSString *urlString = request[@"url"];
-  if (![urlString isKindOfClass:[NSString class]]) {
-    reject(@"invalid_url", @"URL must be a string", nil);
-    return;
-  }
+    override fun getName(): String = "DBSFetchModule"
 
-  NSURL *url = [NSURL URLWithString:urlString];
-  if (!url) {
-    reject(@"invalid_url", @"Invalid URL format", nil);
-    return;
-  }
+    @ReactMethod
+    fun fetch(request: ReadableMap, promise: Promise) {
+        val urlString = request.getString("url")
+        val method = request.getString("method") ?: "GET"
+        val headers = request.getMap("headers")
+        val body = if (request.hasKey("body")) request.getString("body") else null
 
-  NSString *method = [request[@"method"] uppercaseString] ?: @"GET";
-  NSDictionary *headers = request[@"headers"] ?: @{};
-  NSString *bodyString = request[@"body"]; // optional, expected as string
+        if (urlString.isNullOrEmpty()) {
+            promise.reject("TypeError", "Invalid URL")
+            return
+        }
 
-  NSMutableURLRequest *urlRequest = [NSMutableURLRequest requestWithURL:url];
-  [urlRequest setHTTPMethod:method];
+        try {
+            val url = URL(urlString)
+            val connection = url.openConnection() as HttpURLConnection
 
-  for (NSString *key in headers) {
-    id value = headers[key];
-    if ([value isKindOfClass:[NSString class]]) {
-      [urlRequest setValue:value forHTTPHeaderField:key];
+            connection.requestMethod = method
+            connection.doInput = true
+            connection.connectTimeout = 10000
+            connection.readTimeout = 15000
+
+            // Headers
+            headers?.entryIterator?.forEach { entry ->
+                val key = entry.key
+                val value = entry.value?.toString() ?: ""
+                connection.setRequestProperty(key, value)
+            }
+
+            // Body (optional, for POST/PUT/etc)
+            if (!body.isNullOrEmpty() && method in listOf("POST", "PUT", "PATCH")) {
+                connection.doOutput = true
+                connection.outputStream.use { os ->
+                    os.write(body.toByteArray())
+                }
+            }
+
+            // Read response
+            val responseCode = connection.responseCode
+            val responseHeaders = Arguments.createMap().apply {
+                for ((key, value) in connection.headerFields) {
+                    if (key != null && value != null) {
+                        putString(key, value.joinToString(", "))
+                    }
+                }
+            }
+
+            val inputStream = if (responseCode >= 400)
+                connection.errorStream ?: connection.inputStream
+            else
+                connection.inputStream
+
+            val bodyString = inputStream?.bufferedReader()?.use(BufferedReader::readText) ?: ""
+
+            val response = Arguments.createMap().apply {
+                putInt("status", responseCode)
+                putMap("headers", responseHeaders)
+                putString("body", bodyString)
+            }
+
+            promise.resolve(response)
+        } catch (e: Exception) {
+            promise.reject("TypeError", e.message, e)
+        }
     }
-  }
-
-  if (bodyString && [bodyString isKindOfClass:[NSString class]]) {
-    NSData *bodyData = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
-    [urlRequest setHTTPBody:bodyData];
-  }
-
-  NSURLSession *session = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]];
-  NSURLSessionDataTask *task = [session dataTaskWithRequest:urlRequest
-                                          completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-
-    if (error) {
-      reject(@"network_error", error.localizedDescription, error);
-      return;
-    }
-
-    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-    NSDictionary *responseHeaders = httpResponse.allHeaderFields;
-    NSInteger statusCode = httpResponse.statusCode;
-    NSString *body = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"";
-
-    resolve(@{
-      @"status": @(statusCode),
-      @"headers": responseHeaders,
-      @"body": body
-    });
-  }];
-
-  [task resume];
 }
-
-@end
