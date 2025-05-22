@@ -1,10 +1,8 @@
 package com.yourpackage
 
 import com.facebook.react.bridge.*
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
+import okhttp3.*
+import java.io.IOException
 
 class DBSFetchModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -13,66 +11,58 @@ class DBSFetchModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun fetch(request: ReadableMap, promise: Promise) {
-        val urlString = request.getString("url")
-        val method = request.getString("method") ?: "GET"
-        val headers = request.getMap("headers")
+        val url = request.getString("url")
+        val method = request.getString("method")?.uppercase() ?: "GET"
+        val headersMap = request.getMap("headers")
         val body = if (request.hasKey("body")) request.getString("body") else null
 
-        if (urlString.isNullOrEmpty()) {
+        if (url.isNullOrBlank()) {
             promise.reject("TypeError", "Invalid URL")
             return
         }
 
-        try {
-            val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
+        val client = DBSFetch.shared().getClient()
+        val requestBuilder = Request.Builder().url(url)
 
-            connection.requestMethod = method
-            connection.doInput = true
-            connection.connectTimeout = 10000
-            connection.readTimeout = 15000
-
-            // Headers
-            headers?.entryIterator?.forEach { entry ->
-                val key = entry.key
-                val value = entry.value?.toString() ?: ""
-                connection.setRequestProperty(key, value)
-            }
-
-            // Body (optional, for POST/PUT/etc)
-            if (!body.isNullOrEmpty() && method in listOf("POST", "PUT", "PATCH")) {
-                connection.doOutput = true
-                connection.outputStream.use { os ->
-                    os.write(body.toByteArray())
-                }
-            }
-
-            // Read response
-            val responseCode = connection.responseCode
-            val responseHeaders = Arguments.createMap().apply {
-                for ((key, value) in connection.headerFields) {
-                    if (key != null && value != null) {
-                        putString(key, value.joinToString(", "))
-                    }
-                }
-            }
-
-            val inputStream = if (responseCode >= 400)
-                connection.errorStream ?: connection.inputStream
-            else
-                connection.inputStream
-
-            val bodyString = inputStream?.bufferedReader()?.use(BufferedReader::readText) ?: ""
-
-            val response = Arguments.createMap().apply {
-                putInt("status", responseCode)
-                putMap("headers", responseHeaders)
-                putString("body", bodyString)
-            }
-
-            promise.resolve(response)
-        } catch (e: Exception) {
-            promise.reject("TypeError", e.message, e)
+        // Headers
+        headersMap?.entryIterator?.forEach { entry ->
+            val key = entry.key
+            val value = entry.value?.toString() ?: ""
+            requestBuilder.addHeader(key, value)
         }
+
+        // Body
+        val requestBody: RequestBody? = when {
+            method == "POST" || method == "PUT" || method == "PATCH" -> {
+                val mediaType = "application/json".toMediaTypeOrNull()
+                body?.toRequestBody(mediaType)
+            }
+            else -> null
+        }
+
+        requestBuilder.method(method, requestBody)
+
+        client.newCall(requestBuilder.build()).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                promise.reject("TypeError", e.message, e)
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseBody = response.body?.string() ?: ""
+                val headersMap = Arguments.createMap()
+
+                for ((name, value) in response.headers) {
+                    headersMap.putString(name, value)
+                }
+
+                val result = Arguments.createMap().apply {
+                    putInt("status", response.code)
+                    putMap("headers", headersMap)
+                    putString("body", responseBody)
+                }
+
+                promise.resolve(result)
+            }
+        })
     }
 }
