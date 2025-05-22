@@ -1,78 +1,52 @@
-package com.yourpackage
+class FetchXHR {
+  readyState = 0
+  status = 0
+  responseText = ''
+  responseURL = ''
+  onreadystatechange: (() => void) | null = null
 
-import com.facebook.react.bridge.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import okhttp3.*
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.RequestBody.Companion.toRequestBody
+  private method = 'GET'
+  private url = ''
+  private headers: Record<string, string> = {}
+  private body: any = null
 
-class DBSFetchModule(private val reactContext: ReactApplicationContext) :
-    ReactContextBaseJavaModule(reactContext) {
+  open(method: string, url: string) {
+    this.method = method
+    this.url = url
+    this.readyState = 1
+    this.trigger()
+  }
 
-    override fun getName(): String = "DBSFetchModule"
+  setRequestHeader(header: string, value: string) {
+    this.headers[header] = value
+  }
 
-    private val client: OkHttpClient
-        get() = DBSFetch.shared().getClient()
+  send(body?: any) {
+    this.body = body
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    fetch(this.url, {
+      method: this.method,
+      headers: this.headers,
+      body: body
+    })
+      .then((res) => {
+        this.status = res.status
+        this.responseURL = res.url
+        this.readyState = 4
+        return res.text()
+      })
+      .then((text) => {
+        this.responseText = text
+        this.trigger()
+      })
+      .catch(() => {
+        this.status = 0
+        this.readyState = 4
+        this.trigger()
+      })
+  }
 
-    @ReactMethod
-    fun fetch(request: ReadableMap, promise: Promise) {
-        val url = request.getString("url")
-        val method = request.getString("method")?.uppercase() ?: "GET"
-        val headers = request.getMap("headers")
-        val body = if (request.hasKey("body")) request.getString("body") else null
-
-        if (url.isNullOrBlank()) {
-            promise.reject("TypeError", "Invalid URL")
-            return
-        }
-
-        scope.launch {
-            try {
-                val requestBuilder = Request.Builder().url(url)
-
-                // Headers
-                headers?.entryIterator?.forEach { entry ->
-                    val key = entry.key
-                    val value = entry.value?.toString() ?: ""
-                    requestBuilder.addHeader(key, value)
-                }
-
-                // Body
-                val requestBody = when {
-                    method in listOf("POST", "PUT", "PATCH") && body != null -> {
-                        "application/json".toMediaTypeOrNull()?.let {
-                            body.toRequestBody(it)
-                        }
-                    }
-                    else -> null
-                }
-
-                requestBuilder.method(method, requestBody)
-
-                val response = client.newCall(requestBuilder.build()).execute()
-
-                val responseHeaders = Arguments.createMap().apply {
-                    for ((name, value) in response.headers) {
-                        putString(name, value)
-                    }
-                }
-
-                val responseBody = response.body?.string().orEmpty()
-
-                val result = Arguments.createMap().apply {
-                    putInt("status", response.code)
-                    putMap("headers", responseHeaders)
-                    putString("body", responseBody)
-                }
-
-                promise.resolve(result)
-            } catch (e: Exception) {
-                promise.reject("TypeError", e.message, e)
-            }
-        }
-    }
+  private trigger() {
+    this.onreadystatechange?.()
+  }
 }
