@@ -1,91 +1,42 @@
-import { DBSFetch } from './DBSFetch' // <-- zaimportuj swój moduł
+## 🔁 Architecture: Native-Controlled Networking (Host ➝ JS)
 
-type Headers = Record<string, string>
++------------------------------------------------------------+
+|                 🟢 Host App (iOS / Android)                |
+|------------------------------------------------------------|
+|                                                            |
+|  1. Create secure session:                                 |
+|     - iOS: NSURLSession with SSL pinning                   |
+|     - Android: OkHttpClient with proxy, certs              |
+|                                                            |
+|  2. Inject into native module:                             |
+|     DBSFetch.shared().configure(with: session)             |
+|                                                            |
+|  3. DBSFetch.fetch(...) exposed to JS via bridge           |
+|     ⇨ Accepts: url, method, headers, body                  |
+|     ⇨ Returns: status, headers, body                       |
++------------------------------▼-----------------------------+
 
-export class MonkeyXMLHttpRequest {
-  private method = 'GET'
-  private url = ''
-  private headers: Headers = {}
-  private body: any = null
-  private aborted = false
++------------------------------------------------------------+
+|             🟡 React Native Bridge & Integration           |
+|------------------------------------------------------------|
+|                                                            |
+|  4. MonkeyXMLHttpRequest wraps DBSFetch.fetch              |
+|     - Emits standard XHR events                            |
+|     - Looks & behaves like real XMLHttpRequest             |
+|                                                            |
+|  5. global.XMLHttpRequest = MonkeyXMLHttpRequest           |
+|     - Intercepts all network usage in JS                   |
++------------------------------▼-----------------------------+
 
-  private _listeners: Record<string, Function[]> = {}
-
-  readyState = 0
-  status = 0
-  responseText = ''
-
-  onreadystatechange: (() => void) | null = null
-  onerror: (() => void) | null = null
-  onabort: (() => void) | null = null
-  onload: (() => void) | null = null
-  onloadend: (() => void) | null = null
-
-  open(method: string, url: string) {
-    this.method = method.toUpperCase()
-    this.url = url
-    this.readyState = 1
-    this._emit('readystatechange')
-  }
-
-  setRequestHeader(key: string, value: string) {
-    this.headers[key] = value
-  }
-
-  send(body?: any) {
-    this.body = body
-    this.readyState = 2
-    this._emit('readystatechange')
-    this._emit('loadstart')
-
-    DBSFetch.fetch(this.url, {
-      method: this.method,
-      headers: this.headers,
-      body: this.body
-    })
-      .then((res) => {
-        if (this.aborted) return
-
-        this.status = res.status
-        this.responseText = res.body
-        this.readyState = 4
-        this._emit('readystatechange')
-        this._emit('load')
-        this._emit('loadend')
-      })
-      .catch((e) => {
-        if (this.aborted) return
-        this.readyState = 4
-        this._emit('error')
-        this._emit('loadend')
-      })
-  }
-
-  abort() {
-    this.aborted = true
-    this.readyState = 0
-    this._emit('abort')
-    this._emit('loadend')
-  }
-
-  addEventListener(type: string, callback: (...args: any[]) => void) {
-    if (!this._listeners[type]) this._listeners[type] = []
-    this._listeners[type].push(callback)
-  }
-
-  removeEventListener(type: string, callback: (...args: any[]) => void) {
-    this._listeners[type] = (this._listeners[type] || []).filter(fn => fn !== callback)
-  }
-
-  dispatchEvent(type: string, event: any = {}) {
-    this._emit(type, event)
-  }
-
-  private _emit(type: string, event: any = {}) {
-    const handler = (this as any)[`on${type}`]
-    if (typeof handler === 'function') {
-      handler.call(this, event)
-    }
-    this._listeners[type]?.forEach(fn => fn.call(this, event))
-  }
-}
++------------------------------------------------------------+
+|                  🔵 JavaScript Runtime                     |
+|------------------------------------------------------------|
+|                                                            |
+|  6. Any library using fetch() / XHR                        |
+|     ⇨ axios, graphql-upload, socket.io, etc.               |
+|                                                            |
+|  7. Requests go through MonkeyXMLHttpRequest               |
+|     ⇨ routed via DBSFetch to native session                |
+|                                                            |
+|  ✅ JavaScript has NO direct internet access               |
++------------------------------------------------------------+
