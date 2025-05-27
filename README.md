@@ -1,42 +1,40 @@
-## 🔁 Architecture: Native-Controlled Networking (Host ➝ JS)
+const fs = require('fs');
+const path = require('path');
 
-+------------------------------------------------------------+
-|                 🟢 Host App (iOS / Android)                |
-|------------------------------------------------------------|
-|                                                            |
-|  1. Create secure session:                                 |
-|     - iOS: NSURLSession with SSL pinning                   |
-|     - Android: OkHttpClient with proxy, certs              |
-|                                                            |
-|  2. Inject into native module:                             |
-|     DBSFetch.shared().configure(with: session)             |
-|                                                            |
-|  3. DBSFetch.fetch(...) exposed to JS via bridge           |
-|     ⇨ Accepts: url, method, headers, body                  |
-|     ⇨ Returns: status, headers, body                       |
-+------------------------------▼-----------------------------+
+const ROOT = path.resolve(__dirname, '..');
+const PKG_PATH = path.join(ROOT, 'package.json');
+const NODE_MODULES = path.join(ROOT, 'node_modules');
 
-+------------------------------------------------------------+
-|             🟡 React Native Bridge & Integration           |
-|------------------------------------------------------------|
-|                                                            |
-|  4. MonkeyXMLHttpRequest wraps DBSFetch.fetch              |
-|     - Emits standard XHR events                            |
-|     - Looks & behaves like real XMLHttpRequest             |
-|                                                            |
-|  5. global.XMLHttpRequest = MonkeyXMLHttpRequest           |
-|     - Intercepts all network usage in JS                   |
-+------------------------------▼-----------------------------+
+const pkg = JSON.parse(fs.readFileSync(PKG_PATH, 'utf-8'));
+const dependencies = Object.keys(pkg.dependencies || {});
+const appName = pkg.name;
 
-+------------------------------------------------------------+
-|                  🔵 JavaScript Runtime                     |
-|------------------------------------------------------------|
-|                                                            |
-|  6. Any library using fetch() / XHR                        |
-|     ⇨ axios, graphql-upload, socket.io, etc.               |
-|                                                            |
-|  7. Requests go through MonkeyXMLHttpRequest               |
-|     ⇨ routed via DBSFetch to native session                |
-|                                                            |
-|  ✅ JavaScript has NO direct internet access               |
-+------------------------------------------------------------+
+function updateGradleInDependency(dep) {
+  const androidDir = path.join(NODE_MODULES, dep, 'android');
+  const gradleFile = path.join(androidDir, 'settings.gradle');
+  const localProps = path.join(androidDir, 'local.properties');
+
+  if (!fs.existsSync(gradleFile)) return;
+
+  let lines = fs.readFileSync(gradleFile, 'utf-8').split('\n');
+
+  // Dodaj rootProject.name jeśli nie istnieje
+  const hasProjectName = lines.some(line => line.includes('rootProject.name'));
+  if (!hasProjectName) {
+    lines.unshift(`rootProject.name = '${appName}'`);
+  }
+
+  // Usuń linie zaczynające się od org.gradle.jvmargs
+  lines = lines.filter(line => !line.trim().startsWith('org.gradle.jvmargs'));
+
+  fs.writeFileSync(gradleFile, lines.join('\n'), 'utf-8');
+  console.log(`✔ Zaktualizowano: ${dep}/android/settings.gradle`);
+
+  // Usuń local.properties jeśli istnieje
+  if (fs.existsSync(localProps)) {
+    fs.unlinkSync(localProps);
+    console.log(`🗑 Usunięto: ${dep}/android/local.properties`);
+  }
+}
+
+dependencies.forEach(updateGradleInDependency);
