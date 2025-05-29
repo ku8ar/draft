@@ -1,44 +1,36 @@
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import groovy.json.JsonSlurper
 
-const inputPath = path.resolve(__dirname, "../android/build.gradle");
-const outputPath = path.join(os.homedir(), ".gradle/init.d/ext-init.gradle");
+def rootDir = rootProject.rootDir
+def packageJsonFile = new File(rootDir, "package.json")
 
-if (!fs.existsSync(inputPath)) {
-  console.error("❌ Nie znaleziono pliku android/build.gradle");
-  process.exit(1);
+if (!packageJsonFile.exists()) {
+  throw new GradleException("❌ Nie znaleziono package.json w ${packageJsonFile}")
 }
 
-const file = fs.readFileSync(inputPath, "utf8");
+def packageJson = new JsonSlurper().parseText(packageJsonFile.text)
+def rnVersionRaw = packageJson.dependencies["react-native"] ?: packageJson.devDependencies["react-native"]
 
-// Znajdź blok ext { ... } wewnątrz buildscript { ... }
-const extMatch = file.match(/buildscript\s*{[\s\S]*?ext\s*{([\s\S]*?)^\s*}\s*}/m);
-if (!extMatch) {
-  console.warn("⚠️  Nie znaleziono bloku buildscript.ext");
-  process.exit(1);
+if (!rnVersionRaw) {
+  throw new GradleException("❌ Nie znaleziono react-native w package.json")
 }
 
-const extBlock = extMatch[1];
-const pairs = [...extBlock.matchAll(/^\s*(\w+)\s*=\s*(.+?)\s*$/gm)];
+// Oczyść wersję z np. "^0.79.0", "~0.78.2" itp.
+def rnVersion = rnVersionRaw.replaceAll(/^[^0-9]+/, "") // usunie ^, ~, >= itp.
 
-if (pairs.length === 0) {
-  console.warn("⚠️  Nie znaleziono żadnych zmiennych w ext");
-  process.exit(1);
+println "🔧 Zastępuję react-native:+ → react-android:$rnVersion"
+
+allprojects {
+  afterEvaluate { project ->
+    project.configurations.matching { it.canBeResolved }.all { config ->
+      config.dependencies.withType(ModuleDependency).configureEach { dep ->
+        if (dep.group == "com.facebook.react" && dep.name == "react-native") {
+          println "🔄 ${project.name}: ${dep.group}:${dep.name}:${dep.version} → react-android:$rnVersion"
+          config.dependencies.remove(dep)
+          config.dependencies.add(
+            project.dependencies.create("com.facebook.react:react-android:$rnVersion")
+          )
+        }
+      }
+    }
+  }
 }
-
-const output = [
-  "// AUTOMATYCZNIE WYGENEROWANY PLIK — NIE EDYTUJ RĘCZNIE",
-  "allprojects {"
-];
-
-for (const [, key, value] of pairs) {
-  output.push(`  ext.${key} = ${value}`);
-}
-
-output.push("}");
-
-fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, output.join("\n") + "\n");
-
-console.log(`✅ Wygenerowano: ${outputPath}`);
